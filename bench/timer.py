@@ -4,10 +4,14 @@ import numpy as np
 
 
 def time_function(fn, *args, warmup=3, runs=30, **kwargs):
+    if warmup < 0:
+        raise ValueError("warmup must be greater or equalthan 0")
+    if runs <= 0:
+            raise ValueError("runs must be greater than 0")
     if warmup >= runs:
         raise ValueError("The value of runs must be greater than warmup")
-    durations = np.zeros(runs - warmup)
-    for i in range(runs):
+    durations = np.zeros(runs)
+    for i in range(runs + warmup):
         start = time.perf_counter()  # return float in seconds
         fn(*args, **kwargs)
         end = time.perf_counter()
