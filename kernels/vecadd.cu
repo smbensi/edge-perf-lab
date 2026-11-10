@@ -15,9 +15,8 @@
 
 
 
-__global__ void vecAddKernel(float* A, float* B, float* C, int N) {
-    int i;
-    i = blockIdx.x*blockDim.x + threadIdx.x;
+__global__ void vecAddKernel(const float* __restrict__ A, const float* __restrict__ B, float* C, int N) {
+    int i = blockIdx.x*blockDim.x + threadIdx.x;
     if (i < N) {
         C[i] = A[i] + B[i];
     }
@@ -28,7 +27,7 @@ int main() {
     float *A_h, *B_h, *C_h;
     int N = 1000000;
     size_t size = N * sizeof(float);
-    int block_size = 256;
+    const int block_size = 256;
     
     A_h = (float *)malloc(size); 
     B_h = (float *)malloc(size);
@@ -46,8 +45,9 @@ int main() {
     CUDA_CHECK(cudaMemcpy(A_d, A_h, size, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(B_d, B_h, size, cudaMemcpyHostToDevice));
     
-    vecAddKernel<<<ceil((N+ block_size - 1)/ block_size), block_size>>>(A_d, B_d, C_d, N);
+    vecAddKernel<<<(N+ block_size - 1)/ block_size, block_size>>>(A_d, B_d, C_d, N);
     CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     CUDA_CHECK(cudaMemcpy(C_h, C_d, size, cudaMemcpyDeviceToHost));
     
