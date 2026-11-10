@@ -28,7 +28,8 @@ int main() {
     float *A_h, *B_h, *C_h;
     int N = 1000000;
     size_t size = N * sizeof(float);
-
+    int block_size = 256;
+    
     A_h = (float *)malloc(size); 
     B_h = (float *)malloc(size);
     C_h = (float *)malloc(size);
@@ -45,7 +46,7 @@ int main() {
     CUDA_CHECK(cudaMemcpy(A_d, A_h, size, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(B_d, B_h, size, cudaMemcpyHostToDevice));
     
-    vecAddKernel<<<ceil(N/256.0), 256>>>(A_d, B_d, C_d, N);
+    vecAddKernel<<<ceil((N+ block_size - 1)/ block_size), block_size>>>(A_d, B_d, C_d, N);
     CUDA_CHECK(cudaGetLastError());
 
     CUDA_CHECK(cudaMemcpy(C_h, C_d, size, cudaMemcpyDeviceToHost));
