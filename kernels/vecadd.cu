@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
     int N;
     if(argc > 1){
         N = atoi(argv[1]);
-        if(N<0){
+        if(N<=0){
             printf("N must be greater than 0");
             return -1;
         }
