@@ -3,7 +3,21 @@ We mean by performance: accuracy, speed, memory used, time to load, time to proc
 The main language studied will be : English, French, Hebrew and Hindi
 
 
-# computation of vecadd on T4 colab
+# vecadd on T4 (Colab)
+
+
+
+### Method
+- Hardware: T4 (colab)
+- Kernel: C[i] = A[i] + B[i], float32, block size 256, grid = ceil(N / block size)
+- Timing: cudaEvent around each launch, 1 warmup launch(es), K = 1000 timed runs
+- Percentiles: p50 = sorted[K/2], p99 = sorted[K*99/100] (no interpolation, unlike np.percentile)
+- Bandwidth: bytes moved = 3 × N × 4 (2 reads + 1 write) / p50
+- Peak reference: 320 GB/s (T4 datasheet)
+- H2D / D2H: single cudaMemcpy, pageable host memory (malloc)
+- Run: nvcc -O3 -o vecadd kernels/vecadd.cu && ./vecadd <N>
+
+### Results
 
 | N   | Kernel p50 | Kernel p99 | GB/s  | % of max 320 GB/s | H2D       | D2H       |
 |----:|-----------:|-----------:|------:|------------------:|----------:|----------:|
@@ -13,9 +27,10 @@ The main language studied will be : English, French, Hebrew and Hindi
 | 64M | 2.9757 ms  | 2.9921 ms  | 258.1 | 80.7 %            | 117.12 ms | 175.36 ms |
 
 
-From this table we can see that even the max banndwidth of the T4 is given as 320 Gb/s we manage to get only ~80% of it
-Also we can see the huge price of transferring data between host and device it's a factor of ~95x compared to the compute time 
+### Analysis
+From this table we can see that even though the max bandwidth of the T4 is given as 320 GB/s we manage to get only ~80% of it
+Also we can see the huge price of transferring data between host and device it's a factor of ~95x compared to the kernel time 
 
-the interesting point is when N=1M we get only 73% and we can conclude that they are some fixed costs that are responsible of it
-if we have a bandwith of 257 Gb/s
-for N = 1M we would get  p = 3*N*4/257 must be around 46 ms but we get ~50ms so we can conlude the time to launch the kernel and dsipatch the work between SMs take around 4ms
+the interesting point is when N=1M we get only 73% and we can conclude that there are some fixed costs that are responsible of it
+if we have a bandwidth of 257 GB/s
+for N = 1M we would get  p = 3*N*4/257e9 must be around 46 us but we get ~50us so we can conclude the time to launch the kernel and dsipatch the work between SMs take around 4us

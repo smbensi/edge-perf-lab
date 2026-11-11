@@ -1,6 +1,6 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
-#include <stdlib.h>             // contains qsort
+#include <stdlib.h>            
 
 #define CUDA_CHECK(call)                        \
     do {                                        \
