@@ -24,10 +24,8 @@ int compare_doubles(const void *a, const void *b) {
     if (val_a > val_b) return 1;
     return 0;
 }
-
-__global__ void vecAddKernel(float* A, float* B, float* C, int N) {
-    int i;
-    i = blockIdx.x*blockDim.x + threadIdx.x;
+__global__ void vecAddKernel(const float* __restrict__ A, const float* __restrict__ B, float* C, int N) {
+    int i = blockIdx.x*blockDim.x + threadIdx.x;
     if (i < N) {
         C[i] = A[i] + B[i];
     }
@@ -45,7 +43,7 @@ int main(int argc, char *argv[]) {
     int K = 1'000;
     size_t size = N * sizeof(float);
     float time, timeD2H, timeH2D;
-    int blockSize = 256;
+    const int blockSize = 256;
     
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
@@ -100,7 +98,7 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(stop, 0);
     CUDA_CHECK(cudaEventSynchronize(stop));
     CUDA_CHECK(cudaEventElapsedTime(&timeD2H, start, stop));
-
+    CUDA_CHECK(cudaDeviceSynchronize())
     double bandwidth = 3.0*N*4 / (p_50 / 1000) / 1e9;
     
     int ok = 1;
