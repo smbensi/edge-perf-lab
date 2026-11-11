@@ -5,7 +5,7 @@ The main language studied will be : English, French, Hebrew and Hindi
 
 # computation of vecadd on T4 
 
-| N   | Kernel p50 | Go/s | % des 320 Go/s |
+| N   | Kernel p50 | Go/s | % of max 320 Go/s |
 |----:|-----------:|-----:|---------------:|
 | 1M  | 0,05 ms    | 235  | 73 %           |
 | 16M | 0,75 ms    | 257  | 80 %           |
