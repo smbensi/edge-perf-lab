@@ -23,6 +23,7 @@ int compare_doubles(const void *a, const void *b) {
     if (val_a > val_b) return 1;
     return 0;
 }
+
 __global__ void vecAddKernel(const float* __restrict__ A, const float* __restrict__ B, float* C, int N) {
     int i = blockIdx.x*blockDim.x + threadIdx.x;
     if (i < N) {
@@ -36,6 +37,10 @@ int main(int argc, char *argv[]) {
     int N;
     if(argc > 1){
         N = atoi(argv[1]);
+        if(N<0){
+            printf("N must be greater than 0");
+            return -1;
+        }
     } else {
         N = 50'000'000;
     }
@@ -93,12 +98,11 @@ int main(int argc, char *argv[]) {
     
 
     cudaEventRecord(start, 0);
-    CUDA_CHECK(cudaDeviceSynchronize());
-
     CUDA_CHECK(cudaMemcpy(C_h, C_d, size, cudaMemcpyDeviceToHost));
     cudaEventRecord(stop, 0);
     CUDA_CHECK(cudaEventSynchronize(stop));
     CUDA_CHECK(cudaEventElapsedTime(&timeD2H, start, stop));
+    CUDA_CHECK(cudaDeviceSynchronize());
     double bandwidth = 3.0*N*4 / (p_50 / 1000) / 1e9;
     
     int ok = 1;
@@ -110,7 +114,7 @@ int main(int argc, char *argv[]) {
         }
     }
     if (ok == 1){
-        printf("OK | N = %d | kernel p50 = %.4f ms | p99 = %.4f ms | %f Go/s | H2D = %f ms | D2H = %f ms\n",
+        printf("OK | N = %d | kernel p50 = %.4f ms | p99 = %.4f ms | %f GB/s | H2D = %f ms | D2H = %f ms\n",
                N, p_50, p_99, bandwidth, timeH2D, timeD2H);
     }    
 
