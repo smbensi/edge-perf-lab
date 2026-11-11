@@ -1,4 +1,3 @@
-
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>             // contains qsort
@@ -98,7 +97,7 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(stop, 0);
     CUDA_CHECK(cudaEventSynchronize(stop));
     CUDA_CHECK(cudaEventElapsedTime(&timeD2H, start, stop));
-    CUDA_CHECK(cudaDeviceSynchronize())
+    CUDA_CHECK(cudaDeviceSynchronize());
     double bandwidth = 3.0*N*4 / (p_50 / 1000) / 1e9;
     
     int ok = 1;
