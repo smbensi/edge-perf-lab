@@ -129,5 +129,5 @@ int main(int argc, char *argv[]) {
     free(C_h);
     free(durations);
     
-    return failed ? 0 : 1;
+    return failed ? 1 : 0;
 }
