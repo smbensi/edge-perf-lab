@@ -1,8 +1,8 @@
-%%writefile rgb2gray.cu
-
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <cuda_runtime.h>
+
 
 
 #define CUDA_CHECK(call)                        \
@@ -51,6 +51,11 @@ int main(int argc, char *argv[]){
     } else {
         width = atoi(argv[1]);
         height = atoi(argv[2]);
+        if (width <= 0 || height <=0) {
+            fprintf(stderr, "The image's dimensions must be > 0: got (%dx%d)\n",
+            width, height);
+            return 1;
+        }
     }
     float time;
     unsigned char *Pin_d, *Pout_d;
@@ -63,7 +68,23 @@ int main(int argc, char *argv[]){
     if(argc<5){
         blockSize = dim3(16,16);
     } else {
-        blockSize = dim3(atoi(argv[3]), atoi(argv[4]));
+        int block_x = atoi(argv[3]);
+        int block_y = atoi(argv[4]);
+        if (block_x <= 0 || block_y <= 0) {
+            fprintf(stderr, "The block's dimensions must be > 0 (got %dx%d)\n",
+                    block_x, block_y);
+            return 1;
+        }
+        
+        if (block_x * block_y > 1024){
+            fprintf(stderr, "too many threads in the block: got %d > 1024\n",
+                    block_x * block_y);
+            return 1;
+            
+        }
+        
+            
+        blockSize = dim3(block_x, block_y);
     } 
     dim3 gridSize((width + blockSize.x - 1)/ blockSize.x,
                   (height + blockSize.y - 1)/ blockSize.y);
@@ -77,7 +98,7 @@ int main(int argc, char *argv[]){
     if (Pout_h == NULL) {fprintf(stderr,"ERROR ALLOCATION\n"); return 1;}
     
     
-    for (int i = 0; i < CHANNELS * size; i++) {
+    for (size_t i = 0; i < CHANNELS * size; i++) {
         Pin_h[i] = rand() % 256;
     }
     
@@ -114,37 +135,37 @@ int main(int argc, char *argv[]){
     CUDA_CHECK(cudaMemcpy(Pout_h, Pout_d, size, cudaMemcpyDeviceToHost));
     
     
-    int ok = 0;
+    int failed = 0;
     int errors = 0;
     float gray, dist;
     float max_dist = 0;
-    for(int i=0; i < size; i++){
+    for(size_t i=0; i < size; i++){
         gray = 0.21f * Pin_h[i*CHANNELS] + 0.72f * Pin_h[i*CHANNELS + 1] + 0.07f * Pin_h[i*CHANNELS + 2];
         dist = fabsf(Pout_h[i] - gray); 
         if (dist > max_dist){
             max_dist = dist;
         }
         if(dist > 1 ) {
-            ok = 1;
+            failed = 1;
             errors++;
         }
     }
     printf("Number of errors: %d and max error is %.5f\n", errors, max_dist);
-    if (ok == 0){
+    if (failed == 0){
         double bandwidth = 4.0 * width * height / (p_50/1000) / 1e9;
         printf("OK | bandwidth : %.2f GB/s | p50_ms = %.4f | p99_ms = %.4f "
                "| blockSize(%d,%d) | image_size = %dx%d\n",
                bandwidth, p_50, p_99, blockSize.x, blockSize.y, width, height);
-        printf("POURCENTAGE FROM MAXIMUM BW 320 GB/s: %.2f \n", bandwidth/320*100);
+        printf("%% of peak BW 320 GB/s: %.1f%% \n", bandwidth/320*100);
     }
     
     CUDA_CHECK(cudaEventDestroy(start));
     CUDA_CHECK(cudaEventDestroy(stop));
     
-    cudaFree(Pin_d);
-    cudaFree(Pout_d);
+    CUDA_CHECK(cudaFree(Pin_d));
+    CUDA_CHECK(cudaFree(Pout_d));
     free(Pin_h);
     free(Pout_h);
     free(durations);
-    return ok ? 1 : 0;
+    return failed ? 1 : 0;
 }
