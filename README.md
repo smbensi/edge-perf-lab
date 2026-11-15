@@ -33,4 +33,43 @@ Also we can see the huge price of transferring data between host and device it's
 
 The interesting point is when N=1M we get only 73% and we can conclude that there are some fixed costs that are responsible for it
 At 257 GB/s
-for N = 1M , 12MB should take 3*N*4/257e9~46 us but we measure ~50us so ~4 µs is a fixed cost (GPU-side kernel start-up and tail effect). »
+for N = 1M , 12MB should take 3*N*4/257e9~46 us but we measure ~50us so ~4 µs is a fixed cost (GPU-side kernel start-up and tail effect). 
+
+
+# rgb2gray on T4 (Colab)
+
+Converts an RGB image (3 bytes/pixel) to grayscale (1 byte/pixel)
+with one thread per pixel, using a 2D grid
+
+### Method
+
+- GPU: T4 model colab, peak memory bandwidth 320 GB/s
+- Random input image, result checked against CPU reference (tolerance 1)
+- 1 warmup launch, then K=1000 times launches with cudaEvent
+- effective bandwidth = 4 (3 read + 1 write) * width * height / p50
+
+
+
+### Results
+
+| Image size | Block size | p50       | p99       | GB/s  | % of max 320 GB/s | 
+|-----------:|-----------:|----------:|----------:|------:|------------------:|
+| 1000x600   | (16,16)    | 0.0195 ms | 0.0250 ms | 123.4 | 38.5 %            |
+| 1000x600   | (32,8)     | 0.0164 ms | 0.0189 ms | 146.8 | 45.9 %            |
+| 4000x3000  | (16,16)    | 0.3287 ms | 0.3724 ms | 146.0 | 45.6 %            |
+| 4000x3000  | (32,8)     | 0.2705 ms | 0.2780 ms | 177.5 | 55.5 %            |
+
+
+### Takeaways
+
+1. (32,8) blocks are ~20 % faster than (16,16) (+19 % on 1000×600, +22 % on 4000×3000), with the same number of threads per block. Hypothesis: 32-wide blocks give more contiguous memory accesses (memory coalescing). To be confirmed after studying warps (PMPP ch. 4) and with ncu in the next PR.
+
+2. the small image got only 46% . In this image we deplace 2.4MB at the speed of the big image 177.5GB/s we would have get 13.5us but now we have 18.5 so it must be the fixed costs of launching the kernel and dispatch the work to SMs and the closing that takes around 5us
+
+3. The large image plateaus at 55.5 % of peak, vs 80 % for vecAdd, so the kernel itself is less efficient than vecAdd, not just the fixed cost. Open question, to be checked with ncu in the next PR.
+
+### How to run
+nvcc -O3 -o rgb2gray rgb2gray.cu
+./rgb2gray <width> <height> [block_x block_y]
+
+

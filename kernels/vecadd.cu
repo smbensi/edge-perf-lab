@@ -87,6 +87,7 @@ int main(int argc, char *argv[]) {
         CUDA_CHECK(cudaEventRecord(start, 0));
         vecAddKernel<<<(N +blockSize -1 )/blockSize, blockSize>>>(A_d, B_d, C_d, N);
         CUDA_CHECK(cudaEventRecord(stop, 0));
+        CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaEventSynchronize(stop));
         CUDA_CHECK(cudaEventElapsedTime(&time, start, stop));
         durations[i] = time;
@@ -95,9 +96,6 @@ int main(int argc, char *argv[]) {
     double p_50 = durations[K/2];
     double p_99 = durations[K*99/100];
 
-    CUDA_CHECK(cudaDeviceSynchronize());
-    
-
     CUDA_CHECK(cudaEventRecord(start, 0));
     CUDA_CHECK(cudaMemcpy(C_h, C_d, size, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaEventRecord(stop, 0));
@@ -105,15 +103,15 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaEventElapsedTime(&timeD2H, start, stop));
     double bandwidth = 3.0*N*4 / (p_50 / 1000) / 1e9;
     
-    int failed = 1;
+    int failed = 0;
     for (int i = 0; i < N; i++) {
         if (C_h[i] != A_h[i] + B_h[i]) {
             fprintf(stderr, "ERROR at i=%d got %f and expected %f\n", i,C_h[i],A_h[i]+B_h[i]);
-            failed = 0;
+            failed = 1;
             break;
         }
     }
-    if (failed == 1){
+    if (failed == 0){
         printf("OK | N = %d | kernel p50 = %.4f ms | p99 = %.4f ms | %.1f GB/s | H2D = %f ms | D2H = %f ms\n",
                N, p_50, p_99, bandwidth, timeH2D, timeD2H);
     }    
