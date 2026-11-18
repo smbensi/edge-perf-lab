@@ -71,7 +71,7 @@ cudaError_t measureCudaMemcpy(void *dest, void const *source, size_t size_bytes,
     return cudaSuccess;
 }
 
-void print_results(float *p_50_99_ms,size_t size,const char type[]){
+void print_results(float *p_50_99_ms,size_t size,const char *type){
     printf("Transfer type : %s\n", type);
     printf("p_50ms = %.4f , p_99ms = %.4f\n", p_50_99_ms[0], p_50_99_ms[1]);
     float bandwidth_p50 = size/(p_50_99_ms[0]/1000)/1e9;
