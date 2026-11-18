@@ -73,3 +73,27 @@ nvcc -O3 -o rgb2gray rgb2gray.cu
 ./rgb2gray <width> <height> [block_x block_y]
 
 
+
+# PINNED TRANSFERS (T4 on Colab)
+
+we have seen in pageable memory that the performance for transfer is around 30% of the maximal theory number with pinned memory we can achieve 80% of the max
+
+| Transfer | Pageable (measured, PR #4) | Pinned (predicted) | Predicted gain |
+|:---------|---------------------------:|-------------------:|---------------:|
+| H2D      | 4.66 GB/s                  | 12.6 GB/s          | ≈ 2.7×         |
+| D2H      | 1.44 GB/s                  | 12.6 GB/s          | ≈ 8.7×         |
+
+PCIe Gen3 x16 ceiling: 15.75 GB/s
+
+### Results (measured)
+
+Transfer size: 200 MB (bandwidth × p50).
+
+| Transfer | Memory   | p50       | p99       | Bandwidth at p50 | Bandwidth at p99 | % of PCIe ceiling (p50) |
+|:---------|:---------|----------:|----------:|-----------------:|-----------------:|------------------------:|
+| H2D      | Pageable | 43.96 ms  | 49.20 ms  | 4.55 GB/s        | 4.06 GB/s        | 28.9 %                  |
+| D2H      | Pageable | 46.95 ms  | 57.06 ms  | 4.26 GB/s        | 3.51 GB/s        | 27.0 %                  |
+| H2D      | Pinned   | 16.22 ms  | 16.26 ms  | 12.33 GB/s       | 12.30 GB/s       | 78.3 %                  |
+| D2H      | Pinned   | 15.31 ms  | 15.35 ms  | 13.07 GB/s       | 13.03 GB/s       | 83.0 %                  |
+
+First (cold) copy: 171.95 ms, 1.16 GB/s.
