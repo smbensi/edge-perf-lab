@@ -97,3 +97,31 @@ Transfer size: 200 MB (bandwidth × p50).
 | D2H      | Pinned   | 15.31 ms  | 15.35 ms  | 13.07 GB/s       | 13.03 GB/s       | 83.0 %                  |
 
 First (cold) copy: 171.95 ms, 1.16 GB/s.
+
+The T4's PCIe Gen3 x16 theoretical peak is 15.75 GB/s per directioon
+In our tests we measured
+For pageable memory , p50=4.66 GB/s that is around 30% of peak
+For pinned memory p50=12.35 GB/s  , around 80% of peak
+For cold copy, single run = 1.52 GB/s it's very slow because of all the work to allocate physical pages on first touch (page fauts)
+
+### content
+
+we measured the data bandwidth between host and device in both directions using a T4 gpu running in Colab
+
+### method
+
+K = 1000
+memory copy = 200 MB 
+one warmup
+measure p50 and p99 using cuda events
+
+
+### conclusion
+
+1. We can observe the huge difference between pageable and pinned memory (2.7x faster 12.35GB/s vs 4.66GB/s) due to the need to create a staging copy in pageable memory to let the DMA access the CPU memory to copy to the GPU. This copy is not needed in pinned memory but it's important to  and avoid overusing it
+2. the pageable memory is irregular we have big difference between p50 and p99 (for H2D pageable 4.66GB/s at p50 latency and 3.77GB/s at p99 latency) in pinned we don't see this irregularity (H2D pinned 12.35GB/s at p50 latency and 12.32GB/s at p99 latency)
+3. the cold copy don't reflect the reality so it explains the low bandwidth observed in PR#4 which was measured without warmup
+
+# Instruction
+
+`nvcc -arch=sm_75 transfers.cu -o transfers && ./transfers`
