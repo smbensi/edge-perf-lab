@@ -28,7 +28,7 @@ cudaError_t measureCudaMemcpy(void *dest, void const *source, size_t size_bytes,
     if(repetitions <= 0){
         fprintf(stderr,"repetitions must be > 0\n"); return cudaErrorInvalidValue;
     }
-    
+
     if(source == NULL){
         fprintf(stderr,"source is NULL\n"); return cudaErrorInvalidValue;
     }
@@ -38,7 +38,7 @@ cudaError_t measureCudaMemcpy(void *dest, void const *source, size_t size_bytes,
     if(p_50_99_ms == NULL){
         fprintf(stderr,"p_50_99_ms is NULL\n"); return cudaErrorInvalidValue;
     }
-    
+
     double *latencies = (double*)malloc(repetitions * sizeof(double));
     if (latencies == NULL) {fprintf(stderr,"ERROR ALLOCATION\n"); return cudaErrorMemoryAllocation;}
 
@@ -46,7 +46,7 @@ cudaError_t measureCudaMemcpy(void *dest, void const *source, size_t size_bytes,
     cudaEvent_t start, stop;
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
-    // warmup    
+    // warmup
     CUDA_CHECK(cudaMemcpy(dest, source, size_bytes, direction));
 
 
@@ -82,7 +82,7 @@ void print_results(float *p_50_99_ms,size_t size,const char *type){
 
 int main(int argc, char *argv[]){
     int N = 50'000'000;
-    int K = 20;
+    int K = 1000;
     size_t size = N*sizeof(float);
     float p_50_99_ms[2] = {0.0f};
     cudaError_t cuda_success;
@@ -90,16 +90,16 @@ int main(int argc, char *argv[]){
     float *source = (float*)malloc(size);
     if (source==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
     memset(source, 0, N*sizeof(float));
-    
-    
-    
+
+
+
     float *source_d;
     CUDA_CHECK(cudaMalloc((void**) &source_d, size));
 
     cudaEvent_t start, stop;
     float *fresh = (float*)malloc(size);
     if (fresh==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
-        
+
     float time;
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
@@ -110,14 +110,14 @@ int main(int argc, char *argv[]){
     CUDA_CHECK(cudaEventElapsedTime(&time, start, stop));
     float cold_bw = size / (time / 1e3) / 1e9;
     printf("elapsed time for cold copy: %.4f ms and bandwitdh is %.4f GB/s\n", time, cold_bw);
-    
+
     // H2D PAGEABLE
     cuda_success = measureCudaMemcpy(source_d, source, size, cudaMemcpyHostToDevice, K, p_50_99_ms);
     if (cuda_success != cudaSuccess){
         exit(EXIT_FAILURE);
     }
     print_results(p_50_99_ms, size, "H2D PAGEABLE");
-    
+
     // D2H PAGEABLE
     cuda_success = measureCudaMemcpy(source, source_d, size, cudaMemcpyDeviceToHost, K, p_50_99_ms);
     if (cuda_success != cudaSuccess){
@@ -126,26 +126,26 @@ int main(int argc, char *argv[]){
     print_results(p_50_99_ms, size, "D2H PAGEABLE");
 
 
-    
+
     // H2D PINNED
     float *source_pinned;
     CUDA_CHECK(cudaMallocHost((void **)&source_pinned, size));
     memset(source_pinned, 0, N*sizeof(float));
-        
+
     cuda_success = measureCudaMemcpy(source_d, source_pinned, size, cudaMemcpyHostToDevice, K, p_50_99_ms);
     if (cuda_success != cudaSuccess){
         exit(EXIT_FAILURE);
     }
     print_results(p_50_99_ms, size, "H2D PINNED");
 
-    
+
     // D2H pinned
     cuda_success = measureCudaMemcpy(source_pinned, source_d, size, cudaMemcpyDeviceToHost, K, p_50_99_ms);
     if (cuda_success != cudaSuccess){
         exit(EXIT_FAILURE);
     }
     print_results(p_50_99_ms, size, "D2H PINNED");
-    
+
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
     free(source);
