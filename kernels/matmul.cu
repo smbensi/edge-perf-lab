@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define TILE_WIDTH 32
+#define TILE_WIDTH 16
 
 #define CUDA_CHECK(call)                        \
     do {                                        \
@@ -16,41 +16,32 @@
     } while(0)
 
 
-int compare_doubles(const void *a, const void *b) {
-    double val_a = *(const double *)a;
-    double val_b = *(const double *)b;
-
-    if (val_a < val_b) return -1;
-    if (val_a > val_b) return 1;
-    return 0;
-}
 
 __global__ void matmulKernel(float const *A, float const *B, float *C, int M, int K, int N){
 
 }
 
-void matmulRef(float *A, float *B, float *C, int M, int K, int N){
+void matmulRef(float const *A, float const *B, float *C, int M, int K, int N){
 
     float Cval = 0.0f;
-    for(int i=0; i<M, i+++){
+    for(int i=0; i<M; i++){
         for(int j=0; j<N; ++j){
             Cval = 0.0f;
             for(int k=0; k<K; ++k){
-                Cval += A[K*i+k]*B[k*K+j];
+                Cval += A[K*i+k]*B[k*N+j];
             }
-            C[i*N+j] = Cal;
+            C[i*N+j] = Cval;
         }
     }
 }
 
-int main(int argc, char argv[]){
-    float *C;
+int main(int argc, char *argv[]){
     float *A_d, *B_d, *C_d;
     int M, K, N;
-    if (argc > 4){
-        M = argv[1];
-        K = argv[2];
-        N = argv[3];
+    if (argc >= 4){
+        M = atoi(argv[1]);
+        K = atoi(argv[2]);
+        N = atoi(argv[3]);
     } else {
         M = 1000;
         K = 1000;
@@ -67,25 +58,36 @@ int main(int argc, char argv[]){
     float *B = (float *)malloc(size_B);
     if (B==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
 
+    float *C = (float *)malloc(size_C);
+    if (C==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
+
     for (int i = 0; i < M*K; i++) {
-            A[i] = rand() % 256;
+            A[i] = rand()/(float)RAND_MAX;
         }
     for (int i = 0; i < K*N; i++) {
-            B[i] = rand() % 256;
+            B[i] = rand()/(float)RAND_MAX;
         }
 
 
-    CUDA_CHECK(cudaMalloc((void**) &A, size_A));
-    CUDA_CHECK(cudaMalloc((void**) &B, size_B));
-    CUDA_CHECK(cudaMalloc((void**) &C, size_C));
+    CUDA_CHECK(cudaMalloc((void**) &A_d, size_A));
+    CUDA_CHECK(cudaMalloc((void**) &B_d, size_B));
+    CUDA_CHECK(cudaMalloc((void**) &C_d, size_C));
+
+    CUDA_CHECK(cudaMemcpy(A_d, A, size_A, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(B_d, B, size_B, cudaMemcpyHostToDevice));
+
+
+    
+
+    CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
 
 
     cudaFree(A_d);
-    cudaFree(A_d);
+    cudaFree(B_d);
     cudaFree(C_d);
     free(A);
     free(B);
     free(C);
-
+    return 0;
 }
 
