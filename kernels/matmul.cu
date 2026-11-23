@@ -29,12 +29,16 @@ __global__ void matmulKernel(float const *A, float const *B, float *C, int M, in
 
 }
 
-void matmulRef(float *A, float *B, float *c, int M, int K, int N){
+void matmulRef(float *A, float *B, float *C, int M, int K, int N){
+
+    float Cval = 0.0f;
     for(int i=0; i<M, i+++){
         for(int j=0; j<N; ++j){
+            Cval = 0.0f;
             for(int k=0; k<K; ++k){
-                
+                Cval += A[K*i+k]*B[k*K+j];
             }
+            C[i*N+j] = Cal;
         }
     }
 }
@@ -54,10 +58,34 @@ int main(int argc, char argv[]){
     }
 
     size_t size_A = M*K*sizeof(float);
-    size_t size_B = N*K*sizeof(float);
+    size_t size_B = K*N*sizeof(float);
+    size_t size_C = M*N*sizeof(float);
 
     float *A = (float *)malloc(size_A);
+    if (A==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
+
     float *B = (float *)malloc(size_B);
+    if (B==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
+
+    for (int i = 0; i < M*K; i++) {
+            A[i] = rand() % 256;
+        }
+    for (int i = 0; i < K*N; i++) {
+            B[i] = rand() % 256;
+        }
+
+
+    CUDA_CHECK(cudaMalloc((void**) &A, size_A));
+    CUDA_CHECK(cudaMalloc((void**) &B, size_B));
+    CUDA_CHECK(cudaMalloc((void**) &C, size_C));
+
+
+    cudaFree(A_d);
+    cudaFree(A_d);
+    cudaFree(C_d);
+    free(A);
+    free(B);
+    free(C);
 
 }
 
