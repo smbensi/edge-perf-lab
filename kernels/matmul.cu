@@ -18,7 +18,8 @@
 
 
 __global__ void matmulKernel(float const *A, float const *B, float *C, int M, int K, int N){
-
+    int row = ;
+    int col = ;
 }
 
 void matmulRef(float const *A, float const *B, float *C, int M, int K, int N){
@@ -48,9 +49,13 @@ int main(int argc, char *argv[]){
         N = 1000;
     }
 
-    size_t size_A = M*K*sizeof(float);
-    size_t size_B = K*N*sizeof(float);
-    size_t size_C = M*N*sizeof(float);
+    dim3 blockSize(16,16);
+    dim3 gridSize();
+
+
+    size_t size_A = (size_t)M*K*sizeof(float);
+    size_t size_B = (size_t)K*N*sizeof(float);
+    size_t size_C = (size_t)M*N*sizeof(float);
 
     float *A = (float *)malloc(size_A);
     if (A==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
@@ -61,6 +66,9 @@ int main(int argc, char *argv[]){
     float *C = (float *)malloc(size_C);
     if (C==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
 
+    float *C_ref = (float *)malloc(size_C);
+    if (C_ref==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
+
     for (int i = 0; i < M*K; i++) {
             A[i] = rand()/(float)RAND_MAX;
         }
@@ -68,6 +76,7 @@ int main(int argc, char *argv[]){
             B[i] = rand()/(float)RAND_MAX;
         }
 
+    matmulRef(A, B, C_ref, M, K, N);
 
     CUDA_CHECK(cudaMalloc((void**) &A_d, size_A));
     CUDA_CHECK(cudaMalloc((void**) &B_d, size_B));
@@ -77,7 +86,7 @@ int main(int argc, char *argv[]){
     CUDA_CHECK(cudaMemcpy(B_d, B, size_B, cudaMemcpyHostToDevice));
 
 
-    
+    matmulKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
 
     CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
 
@@ -88,6 +97,7 @@ int main(int argc, char *argv[]){
     free(A);
     free(B);
     free(C);
+    free(C_ref);
     return 0;
 }
 
