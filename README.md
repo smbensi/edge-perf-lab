@@ -76,33 +76,16 @@ nvcc -O3 -o rgb2gray rgb2gray.cu
 
 # PINNED TRANSFERS (T4 on Colab)
 
+
+### prediction 
 we have seen in pageable memory that the performance for transfer is around 30% of the maximal theory number with pinned memory we can achieve 80% of the max
 
-| Transfer | Pageable (measured, PR #4) | Pinned (predicted) | Predicted gain |
+| Transfer | Pageable (measured) | Pinned (predicted) | Predicted gain |
 |:---------|---------------------------:|-------------------:|---------------:|
 | H2D      | 4.66 GB/s                  | 12.6 GB/s          | ≈ 2.7×         |
 | D2H      | 1.44 GB/s                  | 12.6 GB/s          | ≈ 8.7×         |
 
 PCIe Gen3 x16 ceiling: 15.75 GB/s
-
-### Results (measured)
-
-Transfer size: 200 MB (bandwidth × p50).
-
-| Transfer | Memory   | p50       | p99       | Bandwidth at p50 | Bandwidth at p99 | % of PCIe ceiling (p50) |
-|:---------|:---------|----------:|----------:|-----------------:|-----------------:|------------------------:|
-| H2D      | Pageable | 43.96 ms  | 49.20 ms  | 4.55 GB/s        | 4.06 GB/s        | 28.9 %                  |
-| D2H      | Pageable | 46.95 ms  | 57.06 ms  | 4.26 GB/s        | 3.51 GB/s        | 27.0 %                  |
-| H2D      | Pinned   | 16.22 ms  | 16.26 ms  | 12.33 GB/s       | 12.30 GB/s       | 78.3 %                  |
-| D2H      | Pinned   | 15.31 ms  | 15.35 ms  | 13.07 GB/s       | 13.03 GB/s       | 83.0 %                  |
-
-First (cold) copy: 171.95 ms, 1.16 GB/s.
-
-The T4's PCIe Gen3 x16 theoretical peak is 15.75 GB/s per directioon
-In our tests we measured
-For pageable memory , p50=4.66 GB/s that is around 30% of peak
-For pinned memory p50=12.35 GB/s  , around 80% of peak
-For cold copy, single run = 1.52 GB/s it's very slow because of all the work to allocate physical pages on first touch (page fauts)
 
 ### content
 
@@ -116,11 +99,31 @@ one warmup
 measure p50 and p99 using cuda events
 
 
+### Results (measured)
+
+Transfer size: 200 MB (bandwidth × p50).
+
+| Transfer (200 MB, T4, K=1000) | p50 ms | p99 ms | GB/s @p50 | GB/s @p99 latency | % of PCIe ceiling (p50) |
+|---|---|---|---|---|---|
+| H2D pageable | 42.96 | 53.04 | 4.66 | 3.77 | 29.6 % |
+| D2H pageable | 43.08 | 51.50 | 4.64 | 3.88 | 29.5 % |
+| H2D pinned   | 16.19 | 16.23 | 12.35 | 12.32 | 78.4 % |
+| D2H pinned   | 15.25 | 15.30 | 13.12 | 13.07 | 83.3 % |
+| Cold first copy (single run) | 131.97 | — | 1.52 | — | 9.7 % |
+
+
+The T4's PCIe Gen3 x16 theoretical peak is 15.75 GB/s per direction
+In our tests we measured
+For pageable memory , p50=4.66 GB/s that is around 30% of peak
+For pinned memory p50=12.35 GB/s  , around 80% of peak
+For cold copy, single run = 1.52 GB/s it's very slow because of all the work to allocate physical pages on first touch (page faults)
+
+
 ### conclusion
 
-1. We can observe the huge difference between pageable and pinned memory (2.7x faster 12.35GB/s vs 4.66GB/s) due to the need to create a staging copy in pageable memory to let the DMA access the CPU memory to copy to the GPU. This copy is not needed in pinned memory but it's important to  and avoid overusing it
+1. We can observe the huge difference between pageable and pinned memory (2.7x faster 12.35GB/s vs 4.66GB/s) due to the need to create a staging copy in pageable memory to let the DMA access the CPU memory to copy to the GPU. This copy is not needed in pinned memory but it's important to avoid overusing it because pinned pages cannot be swapped outm so too much pinned memory takes RAM away from the OS.
 2. the pageable memory is irregular we have big difference between p50 and p99 (for H2D pageable 4.66GB/s at p50 latency and 3.77GB/s at p99 latency) in pinned we don't see this irregularity (H2D pinned 12.35GB/s at p50 latency and 12.32GB/s at p99 latency)
-3. the cold copy don't reflect the reality so it explains the low bandwidth observed in PR#4 which was measured without warmup
+3. the cold copy doesn't reflect the reality so it explains the low bandwidth observed in PR#4 which was measured without warmup
 
 # Instruction
 
