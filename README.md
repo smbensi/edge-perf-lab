@@ -73,3 +73,58 @@ nvcc -O3 -o rgb2gray rgb2gray.cu
 ./rgb2gray <width> <height> [block_x block_y]
 
 
+
+# PINNED TRANSFERS (T4 on Colab)
+
+
+### prediction 
+we have seen in pageable memory that the performance for transfer is around 30% of the maximal theory number with pinned memory we can achieve 80% of the max
+
+| Transfer | Pageable (measured) | Pinned (predicted) | Predicted gain |
+|:---------|---------------------------:|-------------------:|---------------:|
+| H2D      | 4.66 GB/s                  | 12.6 GB/s          | ≈ 2.7×         |
+| D2H      | 1.44 GB/s                  | 12.6 GB/s          | ≈ 8.7×         |
+
+PCIe Gen3 x16 ceiling: 15.75 GB/s
+
+### content
+
+we measured the data bandwidth between host and device in both directions using a T4 gpu running in Colab
+
+### method
+
+K = 1000
+memory copy = 200 MB 
+one warmup
+measure p50 and p99 using cuda events
+
+
+### Results (measured)
+
+Transfer size: 200 MB (bandwidth × p50).
+
+| Transfer (200 MB, T4, K=1000) | p50 ms | p99 ms | GB/s @p50 | GB/s @p99 latency | % of PCIe ceiling (p50) |
+|---|---|---|---|---|---|
+| H2D pageable | 42.96 | 53.04 | 4.66 | 3.77 | 29.6 % |
+| D2H pageable | 43.08 | 51.50 | 4.64 | 3.88 | 29.5 % |
+| H2D pinned   | 16.19 | 16.23 | 12.35 | 12.32 | 78.4 % |
+| D2H pinned   | 15.25 | 15.30 | 13.12 | 13.07 | 83.3 % |
+| Cold first copy (single run) | 131.97 | — | 1.52 | — | 9.7 % |
+
+
+The T4's PCIe Gen3 x16 theoretical peak is 15.75 GB/s per direction
+In our tests we measured
+For pageable memory , p50=4.66 GB/s that is around 30% of peak
+For pinned memory p50=12.35 GB/s  , around 80% of peak
+For cold copy, single run = 1.52 GB/s it's very slow because of all the work to allocate physical pages on first touch (page faults)
+
+
+### conclusion
+
+1. We can observe the huge difference between pageable and pinned memory (2.7x faster 12.35GB/s vs 4.66GB/s) due to the need to create a staging copy in pageable memory to let the DMA access the CPU memory to copy to the GPU. This copy is not needed in pinned memory but it's important to avoid overusing it because pinned pages cannot be swapped outm so too much pinned memory takes RAM away from the OS.
+2. the pageable memory is irregular we have big difference between p50 and p99 (for H2D pageable 4.66GB/s at p50 latency and 3.77GB/s at p99 latency) in pinned we don't see this irregularity (H2D pinned 12.35GB/s at p50 latency and 12.32GB/s at p99 latency)
+3. the cold copy doesn't reflect the reality so it explains the low bandwidth observed in PR#4 which was measured without warmup
+
+# Instruction
+
+`nvcc -arch=sm_75 transfers.cu -o transfers && ./transfers`
