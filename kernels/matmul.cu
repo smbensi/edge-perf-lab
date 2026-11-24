@@ -129,7 +129,6 @@ int main(int argc, char *argv[]){
     for (int i = 0; i < K*N; i++) {
             B[i] = rand()/(float)RAND_MAX;
         }
-
     matmulRef(A, B, C_ref, M, K, N);
 
     CUDA_CHECK(cudaMalloc((void**) &A_d, size_A));
@@ -138,6 +137,7 @@ int main(int argc, char *argv[]){
 
     CUDA_CHECK(cudaMemcpy(A_d, A, size_A, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(B_d, B, size_B, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(C_d, 0, size_C));
 
     printf("[TILED] M=%d, K=%d, N=%d ",M,K,N);
     matmulTiledKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
@@ -153,6 +153,8 @@ int main(int argc, char *argv[]){
         }
 
     printf("[NAIVE] M=%d, K=%d, N=%d ",M,K,N);
+    CUDA_CHECK(cudaMemset(C_d, 0, size_C));
+    
     matmulNaiveKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
