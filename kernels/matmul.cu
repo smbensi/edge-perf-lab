@@ -18,8 +18,23 @@
 
 
 __global__ void matmulKernel(float const *A, float const *B, float *C, int M, int K, int N){
-    int row = ;
-    int col = ;
+    int bx = blockIdx.x; int by = blockIdx.y;
+    int tx = threadIdx.x; int ty = threadIdx.y;
+    
+    int col = bx * blockDim.x + tx;
+    int row = by * blockDim.y + ty;
+    float Cval;
+    if(row<M && col<N){
+        Cval = 0;
+        for(int i=0; i<K; ++i){
+            Cval += A[row*K+i]*B[i*N+col];
+        }
+        C[row*N+col] = Cval;
+    }
+}
+
+__global__ void matmulTiledKernel(float const *A, float const *B, float *C, int M, int K, int N){
+    
 }
 
 void matmulRef(float const *A, float const *B, float *C, int M, int K, int N){
@@ -36,6 +51,25 @@ void matmulRef(float const *A, float const *B, float *C, int M, int K, int N){
     }
 }
 
+bool compare_matrices(float *gpu_matrix, float *cpu_matrix, int M, int N){
+    float diff = 0;
+    int nb_errors = 0;
+    for(int i=0;i<M*N;++i){
+        diff = fabsf(gpu_matrix[i] - cpu_matrix[i]) > 1e-3f * fabsf(cpu_matrix[i]);
+        // diff = abs(gpu_matrix[i] - cpu_matrix[i]);
+        if (diff > 1e-3){
+            nb_errors++;
+        }
+    }
+    if (nb_errors == 0){
+        printf("the matrices are similar\n");
+        return true;
+    } else{
+        printf("the difference is high and nb errors: %d\n", nb_errors);
+        return false;
+    }
+}
+
 int main(int argc, char *argv[]){
     float *A_d, *B_d, *C_d;
     int M, K, N;
@@ -49,8 +83,8 @@ int main(int argc, char *argv[]){
         N = 1000;
     }
 
-    dim3 blockSize(16,16);
-    dim3 gridSize();
+    dim3 blockSize(TILE_WIDTH,TILE_WIDTH);
+    dim3 gridSize((N+blockSize.x-1)/blockSize.x, (M+blockSize.y-1)/blockSize.y);
 
 
     size_t size_A = (size_t)M*K*sizeof(float);
@@ -87,9 +121,10 @@ int main(int argc, char *argv[]){
 
 
     matmulKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
-
+    CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
 
+    bool result = compare_matrices(C, C_ref, M, N);
 
     cudaFree(A_d);
     cudaFree(B_d);
@@ -98,6 +133,6 @@ int main(int argc, char *argv[]){
     free(B);
     free(C);
     free(C_ref);
-    return 0;
+    return result ? 0: 1;
 }
 
