@@ -17,7 +17,7 @@
 
 
 
-__global__ void matmulKernel(float const *A, float const *B, float *C, int M, int K, int N){
+__global__ void matmulNaiveKernel(float const *A, float const *B, float *C, int M, int K, int N){
     int bx = blockIdx.x; int by = blockIdx.y;
     int tx = threadIdx.x; int ty = threadIdx.y;
     
@@ -34,7 +34,30 @@ __global__ void matmulKernel(float const *A, float const *B, float *C, int M, in
 }
 
 __global__ void matmulTiledKernel(float const *A, float const *B, float *C, int M, int K, int N){
-    
+    __shared__ float Ads[TILE_WIDTH][TILE_WIDTH];
+    __shared__ float Bds[TILE_WIDTH][TILE_WIDTH];
+
+    int bx = blockIdx.x; int by = blockIdx.y;
+    int tx = threadIdx.x; int ty = threadIdx.y;
+
+    int row = by*blockDim.y + ty;
+    int col = bx*blockDim.x + tx;
+
+    float Cval;
+    Cval = 0;
+    for(int ph=0; ph<(K+TILE_WIDTH-1)/TILE_WIDTH; ++ph){
+        if (row < M && (ph*TILE_WIDTH+tx)<K) Ads[ty][tx] = A[row*K+ph*TILE_WIDTH+tx]; else Ads[ty][tx] = 0.0f;
+        if (col < N && (ph*TILE_WIDTH+ty)<K) Bds[ty][tx] = B[(ph*TILE_WIDTH+ty)*N+col]; else Bds[ty][tx] = 0.0f;
+        __syncthreads();
+        for (int i=0; i<TILE_WIDTH; i++){
+            Cval += Ads[ty][i]*Bds[i][tx];
+        } 
+        __syncthreads();
+
+    }
+    if (row < M && col < N){
+        C[row*N+col] = Cval;
+    }
 }
 
 void matmulRef(float const *A, float const *B, float *C, int M, int K, int N){
@@ -51,7 +74,7 @@ void matmulRef(float const *A, float const *B, float *C, int M, int K, int N){
     }
 }
 
-bool compare_matrices(float *gpu_matrix, float *cpu_matrix, int M, int N){
+int compare_matrices(float *gpu_matrix, float *cpu_matrix, int M, int N){
     float diff = 0;
     int nb_errors = 0;
     for(int i=0;i<M*N;++i){
@@ -61,18 +84,15 @@ bool compare_matrices(float *gpu_matrix, float *cpu_matrix, int M, int N){
             nb_errors++;
         }
     }
-    if (nb_errors == 0){
-        printf("the matrices are similar\n");
-        return true;
-    } else{
-        printf("the difference is high and nb errors: %d\n", nb_errors);
-        return false;
-    }
+    return nb_errors;
 }
+
 
 int main(int argc, char *argv[]){
     float *A_d, *B_d, *C_d;
     int M, K, N;
+    int nb_errors;
+
     if (argc >= 4){
         M = atoi(argv[1]);
         K = atoi(argv[2]);
@@ -119,12 +139,32 @@ int main(int argc, char *argv[]){
     CUDA_CHECK(cudaMemcpy(A_d, A, size_A, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(B_d, B, size_B, cudaMemcpyHostToDevice));
 
-
-    matmulKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
+    printf("[TILED] M=%d, K=%d, N=%d ",M,K,N);
+    matmulTiledKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
 
-    bool result = compare_matrices(C, C_ref, M, N);
+    nb_errors = compare_matrices(C, C_ref, M, N);
+    
+    if (nb_errors == 0){
+            printf(" PASSED\n");
+        } else {
+            printf(" FAILED: %d errors\n", nb_errors);
+        }
+
+    printf("[NAIVE] M=%d, K=%d, N=%d ",M,K,N);
+    matmulNaiveKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
+
+    nb_errors = compare_matrices(C, C_ref, M, N);
+    
+    if (nb_errors == 0){
+        printf(" PASSED\n");
+    } else {
+        printf(" FAILED: %d errors\n", nb_errors);
+    }
+
 
     cudaFree(A_d);
     cudaFree(B_d);
@@ -133,6 +173,6 @@ int main(int argc, char *argv[]){
     free(B);
     free(C);
     free(C_ref);
-    return result ? 0: 1;
+    return (nb_errors==0) ? 0: 1;
 }
 
