@@ -132,11 +132,28 @@ For cold copy, single run = 1.52 GB/s it's very slow because of all the work to 
 
 # Matrix Multiplication
 
-We wil compare a naive and a tiled matrix multiplication implementations using CUDA
+We will compare a naive and a tiled matrix multiplication implementations using CUDA
 
 ### predictions
 
 For a NxNxN matrix multiplications we compute 2*N^3 operations.
-For the maive implementation, we load for each thread one line from matrix A and one column fom matrix B so we will load 2*4(float)*N Bytes for each thread and we will compute 2*N FLOPS so our compute intensity is 0.25 FLOP/B.
-Nevertheless , we know that for each warp if we have a block size of 16x16, in the same warp we will load the 2 same rows from A and the 16 same columns from B so the number of loads in the warp will be (2+16)*4*N bytes and the operations number will be 32*2*N so we have a compute intensity of 0.88 FLOP/s.
-In the tiled implementation we load each block in the shared memory so we divide the number of global memory access by the width of the tiled matrix so if TILED_WODTH=16 we'll get a compute intensity of 4 FLOP/B 
+For the naive implementation, we load for each thread one line from matrix A and one column from matrix B so we will load 2*4(float)*N Bytes for each thread and we will compute 2*N FLOPS so our compute intensity is 0.25 FLOP/B.
+Nevertheless , we know that for each warp if we have a block size of 16x16, in the same warp we will load the 2 rows of A (broadcast) and 16  columns of B shared by both half-warps so the number of loads in the warp will be (2+16)*4*N bytes and the operations number will be 32*2*N so we have a compute intensity of 0.88 FLOP/B.
+In the tiled implementation we load each block in the shared memory so we divide the number of global memory access by the width of the tiled matrix so if TILED_WIDTH=16 we'll get a compute intensity of 4 FLOP/B 
+
+
+### Prediction table (T4: 320 GB/s, 8.1 TFLOPS FP32, ridge point ≈ 25 FLOP/B)
+
+Hypothesis: each kernel reaches ~80 % of its roofline ceiling, as vecAdd did (257 / 320 GB/s).
+The model does not depend on N, so the same prediction holds for N = 1024 and N = 2048.
+
+| Kernel | Block | Model | Intensity (FLOP/B) | Roofline ceiling (GFLOPS) | Predicted (GFLOPS) |
+|:-------|:-----:|:------|-------------------:|--------------------------:|-------------------:|
+| naive  | 16×16 | per thread, no reuse (1st guess)          | 0.25 |   80 |   64 |
+| naive  | 32×8  | per warp, A broadcast, B coalesced        | 0.48 |  155 |  124 |
+| naive  | 16×16 | per warp, 2 rows of A, B shared by halves | 0.89 |  285 |  228 |
+| tiled  | 16×16 | global loads ÷ TILE_WIDTH (16)            | 4    | 1280 | 1024 |
+
+All kernels are memory-bound (intensity < 25 FLOP/B).
+
+Without the 2nd `__syncthreads()` (5 runs): prediction = 5 wrong runs beause of the write-after-read

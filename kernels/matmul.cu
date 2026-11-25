@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define TILE_WIDTH 16
 
@@ -17,10 +18,20 @@
 
 
 
+int compare_doubles(const void *a, const void *b) {
+    double val_a = *(const double *)a;
+    double val_b = *(const double *)b;
+
+    if (val_a < val_b) return -1;
+    if (val_a > val_b) return 1;
+    return 0;
+}
+
+
 __global__ void matmulNaiveKernel(float const *A, float const *B, float *C, int M, int K, int N){
     int bx = blockIdx.x; int by = blockIdx.y;
     int tx = threadIdx.x; int ty = threadIdx.y;
-    
+
     int col = bx * blockDim.x + tx;
     int row = by * blockDim.y + ty;
     float Cval;
@@ -51,7 +62,7 @@ __global__ void matmulTiledKernel(float const *A, float const *B, float *C, int 
         __syncthreads();
         for (int i=0; i<TILE_WIDTH; i++){
             Cval += Ads[ty][i]*Bds[i][tx];
-        } 
+        }
         __syncthreads();
 
     }
@@ -87,25 +98,43 @@ int compare_matrices(float *gpu_matrix, float *cpu_matrix, int M, int N){
     return nb_errors;
 }
 
+void print_results(float *p_50_99_ms,int N,const char *type){
+    printf("PASSED : %s\n", type);
+    printf("p_50ms = %.4f , p_99ms = %.4f\n", p_50_99_ms[0], p_50_99_ms[1]);
+    float bandwidth_p50 = (2*N*N*N)/(p_50_99_ms[0]/1000)/1e9;
+    float bandwidth_p99 = (2*N*N*N)/(p_50_99_ms[1]/1000)/1e9;
+    printf(" bandwidth p_50ms = %.4f GB/s , bandwidth p_99ms = %.4f GB/s \n", bandwidth_p50, bandwidth_p99);
+
+}
 
 int main(int argc, char *argv[]){
-    float *A_d, *B_d, *C_d;
-    int M, K, N;
+    cudaEvent_t start, stop;
+    float *A_d, *B_d, *C_d, time;
+    int M, K, N, block_x, block_y;
     int nb_errors;
+    float p_50_99_ms[2] = {0.0f};
+    double p_50, p_99;
+    int repetitions = 1000;
 
     if (argc >= 4){
         M = atoi(argv[1]);
-        K = atoi(argv[2]);
-        N = atoi(argv[3]);
+        N = M;
+        K = M;
+        block_x = atoi(argv[2]);
+        block_y = atoi(argv[3]);
     } else {
         M = 1000;
-        K = 1000;
         N = 1000;
+        K = 1000;
+        block_x = 16;
+        block_y = 16;
     }
 
-    dim3 blockSize(TILE_WIDTH,TILE_WIDTH);
+    dim3 blockSize(block_x, block_y);
     dim3 gridSize((N+blockSize.x-1)/blockSize.x, (M+blockSize.y-1)/blockSize.y);
 
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
 
     size_t size_A = (size_t)M*K*sizeof(float);
     size_t size_B = (size_t)K*N*sizeof(float);
@@ -123,6 +152,10 @@ int main(int argc, char *argv[]){
     float *C_ref = (float *)malloc(size_C);
     if (C_ref==NULL) {fprintf(stderr, "ERROR IN MALLOC ALLOCATION\n"); exit(EXIT_FAILURE);}
 
+    double *latencies = (double*)malloc(repetitions * sizeof(double));
+    if (latencies == NULL) {fprintf(stderr,"ERROR ALLOCATION\n"); return cudaErrorMemoryAllocation;}
+
+
     for (int i = 0; i < M*K; i++) {
             A[i] = rand()/(float)RAND_MAX;
         }
@@ -139,34 +172,61 @@ int main(int argc, char *argv[]){
     CUDA_CHECK(cudaMemcpy(B_d, B, size_B, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemset(C_d, 0, size_C));
 
-    printf("[TILED] M=%d, K=%d, N=%d ",M,K,N);
-    matmulTiledKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
-    CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
-
+    printf("[TILED] M=%d, K=%d, N=%d block_size=(%d,%d)\n",M,K,N, blockSize.x, blockSize.y);
+    for (int i=0; i<repetitions; i++){
+        CUDA_CHECK(cudaEventRecord(start, 0));
+        matmulTiledKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
+        CUDA_CHECK(cudaEventRecord(stop, 0));
+        CUDA_CHECK(cudaEventSynchronize(stop));
+        CUDA_CHECK(cudaEventElapsedTime(&time, start, stop));
+        latencies[i] = time;
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
+    }
     nb_errors = compare_matrices(C, C_ref, M, N);
-    
+    qsort(latencies, repetitions, sizeof(double), compare_doubles);
+    p_50 = latencies[repetitions/2];
+    p_99 = latencies[repetitions*99/100];
+    p_50_99_ms[0] = p_50;
+    p_50_99_ms[1] = p_99;
+
     if (nb_errors == 0){
-            printf(" PASSED\n");
+            // printf(" PASSED\n");
+            print_results(p_50_99_ms,N,"TILED");
         } else {
             printf(" FAILED: %d errors\n", nb_errors);
         }
 
-    printf("[NAIVE] M=%d, K=%d, N=%d ",M,K,N);
+    printf("[NAIVE] M=%d, K=%d, N=%d block_size=(%d,%d)\n",M,K,N, blockSize.x, blockSize.y);
     CUDA_CHECK(cudaMemset(C_d, 0, size_C));
-    
-    matmulNaiveKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
-    CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
-
+    memset(latencies, 0, repetitions*sizeof(double));
+    for (int i=0; i<repetitions; i++){
+        CUDA_CHECK(cudaEventRecord(start, 0));
+        matmulNaiveKernel<<<gridSize, blockSize>>>(A_d, B_d, C_d, M, K, N);
+        CUDA_CHECK(cudaEventRecord(stop, 0));
+        CUDA_CHECK(cudaEventSynchronize(stop));
+        CUDA_CHECK(cudaEventElapsedTime(&time, start, stop));
+        latencies[i] = time;
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaMemcpy(C, C_d, size_C, cudaMemcpyDeviceToHost));
+    }
     nb_errors = compare_matrices(C, C_ref, M, N);
-    
+    qsort(latencies, repetitions, sizeof(double), compare_doubles);
+    p_50 = latencies[repetitions/2];
+    p_99 = latencies[repetitions*99/100];
+    p_50_99_ms[0] = p_50;
+    p_50_99_ms[1] = p_99;
     if (nb_errors == 0){
-        printf(" PASSED\n");
+        // printf(" PASSED\n");
+        print_results(p_50_99_ms,N,"NAIVE");
+
     } else {
         printf(" FAILED: %d errors\n", nb_errors);
     }
 
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+    free(latencies);
 
     cudaFree(A_d);
     cudaFree(B_d);
