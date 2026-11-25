@@ -177,4 +177,3 @@ int main(int argc, char *argv[]){
     free(C_ref);
     return (nb_errors==0) ? 0: 1;
 }
-

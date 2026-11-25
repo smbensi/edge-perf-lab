@@ -86,7 +86,7 @@ we have seen in pageable memory that the performance for transfer is around 30% 
 | D2H      | 1.44 GB/s                  | 12.6 GB/s          | ≈ 8.7×         |
 
 PCIe Gen3 x16 ceiling: 15.75 GB/s
-
+the 1.44 GB/s D2H was a cold first copy from PR#4, not ready-state pageable; warm pageable D2H = 4.64 GB/s
 ### content
 
 we measured the data bandwidth between host and device in both directions using a T4 gpu running in Colab
@@ -121,7 +121,7 @@ For cold copy, single run = 1.52 GB/s it's very slow because of all the work to 
 
 ### conclusion
 
-1. We can observe the huge difference between pageable and pinned memory (2.7x faster 12.35GB/s vs 4.66GB/s) due to the need to create a staging copy in pageable memory to let the DMA access the CPU memory to copy to the GPU. This copy is not needed in pinned memory but it's important to avoid overusing it because pinned pages cannot be swapped outm so too much pinned memory takes RAM away from the OS.
+1. We can observe the huge difference between pageable and pinned memory (2.7x faster 12.35GB/s vs 4.66GB/s) due to the need to create a staging copy in pageable memory to let the DMA access the CPU memory to copy to the GPU. This copy is not needed in pinned memory but it's important to avoid overusing it because pinned pages cannot be swapped out so too much pinned memory takes RAM away from the OS.
 2. the pageable memory is irregular we have big difference between p50 and p99 (for H2D pageable 4.66GB/s at p50 latency and 3.77GB/s at p99 latency) in pinned we don't see this irregularity (H2D pinned 12.35GB/s at p50 latency and 12.32GB/s at p99 latency)
 3. the cold copy doesn't reflect the reality so it explains the low bandwidth observed in PR#4 which was measured without warmup
 
