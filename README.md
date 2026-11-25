@@ -86,7 +86,8 @@ we have seen in pageable memory that the performance for transfer is around 30% 
 | D2H      | 1.44 GB/s                  | 12.6 GB/s          | ≈ 8.7×         |
 
 PCIe Gen3 x16 ceiling: 15.75 GB/s
-the 1.44 GB/s D2H was a cold first copy from PR#4, not ready-state pageable; warm pageable D2H = 4.64 GB/s
+the 1.44 GB/s D2H was a cold first copy from PR#4, not steady-state pageable; warm pageable D2H = 4.64 GB/s
+
 ### content
 
 we measured the data bandwidth between host and device in both directions using a T4 gpu running in Colab
