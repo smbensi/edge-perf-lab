@@ -157,3 +157,8 @@ The model does not depend on N, so the same prediction holds for N = 1024 and N 
 All kernels are memory-bound (intensity < 25 FLOP/B).
 
 Without the 2nd `__syncthreads()` (5 runs): prediction = 5 wrong runs beause of the write-after-read
+
+
+### instruction
+
+!nvcc -arch=sm_75 matmul.cu -o matmul && ./matmul 1024 32 8

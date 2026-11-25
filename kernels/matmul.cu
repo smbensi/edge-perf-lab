@@ -45,8 +45,11 @@ __global__ void matmulNaiveKernel(float const *A, float const *B, float *C, int 
 }
 
 __global__ void matmulTiledKernel(float const *A, float const *B, float *C, int M, int K, int N){
-    __shared__ float Ads[TILE_WIDTH][TILE_WIDTH];
-    __shared__ float Bds[TILE_WIDTH][TILE_WIDTH];
+    __shared__ float Ads[32][8];
+    //__shared__ float Ads[TILE_WIDTH][TILE_WIDTH];
+    __shared__ float Bds[32][8];
+    //__shared__ float Bds[TILE_WIDTH][TILE_WIDTH];
+    extern __shared__ Ads_Bds[];
 
     int bx = blockIdx.x; int by = blockIdx.y;
     int tx = threadIdx.x; int ty = threadIdx.y;
@@ -101,8 +104,8 @@ int compare_matrices(float *gpu_matrix, float *cpu_matrix, int M, int N){
 void print_results(float *p_50_99_ms,int N,const char *type){
     printf("PASSED : %s\n", type);
     printf("p_50ms = %.4f , p_99ms = %.4f\n", p_50_99_ms[0], p_50_99_ms[1]);
-    float bandwidth_p50 = (2*N*N*N)/(p_50_99_ms[0]/1000)/1e9;
-    float bandwidth_p99 = (2*N*N*N)/(p_50_99_ms[1]/1000)/1e9;
+    double bandwidth_p50 = (2*(size_t)N*N*N)/(p_50_99_ms[0]/1000)/1e9;
+    double bandwidth_p99 = (2*(size_t)N*N*N)/(p_50_99_ms[1]/1000)/1e9;
     printf(" bandwidth p_50ms = %.4f GB/s , bandwidth p_99ms = %.4f GB/s \n", bandwidth_p50, bandwidth_p99);
 
 }
