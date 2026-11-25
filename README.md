@@ -125,6 +125,17 @@ For cold copy, single run = 1.52 GB/s it's very slow because of all the work to 
 2. the pageable memory is irregular we have big difference between p50 and p99 (for H2D pageable 4.66GB/s at p50 latency and 3.77GB/s at p99 latency) in pinned we don't see this irregularity (H2D pinned 12.35GB/s at p50 latency and 12.32GB/s at p99 latency)
 3. the cold copy doesn't reflect the reality so it explains the low bandwidth observed in PR#4 which was measured without warmup
 
-# Instruction
+### Instruction
 
 `nvcc -arch=sm_75 transfers.cu -o transfers && ./transfers`
+
+# Matrix Multiplication
+
+We wil compare a naive and a tiled matrix multiplication implementations using CUDA
+
+### predictions
+
+For a NxNxN matrix multiplications we compute 2*N^3 operations.
+For the maive implementation, we load for each thread one line from matrix A and one column fom matrix B so we will load 2*4(float)*N Bytes for each thread and we will compute 2*N FLOPS so our compute intensity is 0.25 FLOP/B.
+Nevertheless , we know that for each warp if we have a block size of 16x16, in the same warp we will load the 2 same rows from A and the 16 same columns from B so the number of loads in the warp will be (2+16)*4*N bytes and the operations number will be 32*2*N so we have a compute intensity of 0.88 FLOP/s.
+In the tiled implementation we load each block in the shared memory so we divide the number of global memory access by the width of the tiled matrix so if TILED_WODTH=16 we'll get a compute intensity of 4 FLOP/B 
