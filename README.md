@@ -126,6 +126,80 @@ For cold copy, single run = 1.52 GB/s it's very slow because of all the work to 
 2. the pageable memory is irregular we have big difference between p50 and p99 (for H2D pageable 4.66GB/s at p50 latency and 3.77GB/s at p99 latency) in pinned we don't see this irregularity (H2D pinned 12.35GB/s at p50 latency and 12.32GB/s at p99 latency)
 3. the cold copy doesn't reflect the reality so it explains the low bandwidth observed in PR#4 which was measured without warmup
 
-# Instruction
+### Instruction
 
 `nvcc -arch=sm_75 transfers.cu -o transfers && ./transfers`
+
+# Matrix Multiplication
+
+We will compare a naive and a tiled matrix multiplication implementations using CUDA
+
+### predictions
+
+For a NxNxN matrix multiplications we compute 2*N^3 operations.
+For the naive implementation, we load for each thread one line from matrix A and one column from matrix B so we will load 2*4(float)*N Bytes for each thread and we will compute 2*N FLOPS so our compute intensity is 0.25 FLOP/B.
+Nevertheless , we know that for each warp if we have a block size of 16x16, in the same warp we will load the 2 rows of A (broadcast) and 16  columns of B shared by both half-warps so the number of loads in the warp will be (2+16)*4*N bytes and the operations number will be 32*2*N so we have a compute intensity of 0.88 FLOP/B.
+In the tiled implementation we load each block in the shared memory so we divide the number of global memory access by the width of the tiled matrix so if TILED_WIDTH=16 we'll get a compute intensity of 4 FLOP/B 
+
+
+### Prediction table (T4: 320 GB/s, 8.1 TFLOPS FP32, ridge point ≈ 25 FLOP/B)
+
+Hypothesis: each kernel reaches ~80 % of its roofline ceiling, as vecAdd did (257 / 320 GB/s).
+The model does not depend on N, so the same prediction holds for N = 1024 and N = 2048.
+
+| Kernel | Block | Model | Intensity (FLOP/B) | Roofline ceiling (GFLOPS) | Predicted (GFLOPS) |
+|:-------|:-----:|:------|-------------------:|--------------------------:|-------------------:|
+| naive  | 16×16 | per thread, no reuse (1st guess)          | 0.25 |   80 |   64 |
+| naive  | 32×8  | per warp, A broadcast, B coalesced        | 0.48 |  155 |  124 |
+| naive  | 16×16 | per warp, 2 rows of A, B shared by halves | 0.89 |  285 |  228 |
+| tiled  | 16×16 | global loads ÷ TILE_WIDTH (16)            | 4    | 1280 | 1024 |
+
+All kernels are memory-bound (intensity < 25 FLOP/B).
+
+Without the 2nd `__syncthreads()` (5 runs): prediction = 5 wrong runs because of the write-after-read
+
+
+### Results
+
+| Kernel | Block | p50 (ms) | p99 (ms) | GFLOPS @p50 | GFLOPS @p99 | Predicted (GFLOPS) | Measured / predicted | Roofline ceiling (GFLOPS) | % of ceiling | % of FP32 peak (8.1 TFLOPS) |
+|:-------|:-----:|---------:|---------:|------------:|------------:|-------------------:|---------------------:|--------------------------:|-------------:|----------------------------:|
+| naive  | 16×16            | 4.1096 | 9.1853 | 522.6 | 233.8 | 228   | 2.29× | 285   | 183 % | 6.5 % |
+| tiled  | 16×16            | 3.4916 | 3.5712 | 615.0 | 601.3 | 1024  | 0.60× | 1280  | 48 %  | 7.6 % |
+| naive  | 32×8             | 3.3845 | 7.1032 | 634.5 | 302.3 | 124   | 5.12× | 155   | 409 % | 7.8 % |
+| tiled  | 32×8 (TK=8)      | 4.3085 | 4.3831 | 498.4 | 489.9 | 819\* | 0.61× | 1024\* | 49 %  | 6.2 % |
+
+\* Not in the prediction table: TK = 8 gives an intensity of 2·8·256 / ((8·8 + 8·32)·4) = 3.2 FLOP/B, so a ceiling of 3.2 × 320 = 1024 GFLOPS and 80 % of it = 819 GFLOPS.
+
+### Conclusions
+
+1. **Tiling behaves as the roofline model predicts, in relative terms.**
+   Tiled 16×16 reaches 615 GFLOPS and tiled 32×8 (TK = 8) 498 GFLOPS: a ratio of 0.81,
+   matching the intensity ratio 3.2 / 4 = 0.80. Both kernels sit at ~48–49 % of their
+   roofline ceiling (1280 and 1024 GFLOPS), below the 80 % assumed in the prediction.
+
+2. **The naive kernel beats its own "ceiling" (183 % at 16×16, 409 % at 32×8).**
+   The model assumes every global load goes to DRAM. In practice the L1/L2 caches serve
+   most repeated loads of A and B, so actual DRAM traffic is lower and the effective
+   intensity higher than modelled. The naive ceiling is a pessimistic bound, not a limit.
+
+3. **Block shape matters for the naive kernel: 32×8 is 21 % faster than 16×16 (634 vs 523 GFLOPS).**
+   With 32×8 a warp reads one contiguous row of 32 floats (128 bytes, fully coalesced);
+   with 16×16 it reads two half-rows, i.e. two separate memory segments.
+   Same effect and same magnitude as rgb2gray (+20 %).
+
+4. **Tiled 32×8 is slower than naive 32×8 (498 vs 634 GFLOPS).**
+   With TK = 8 the kernel runs K / 8 = 128 phases, i.e. 256 `__syncthreads()`,
+   only 64 of 256 threads load A, and since TK is a runtime value the inner loop
+   cannot be unrolled. Tiling only pays off if these overheads stay small.
+
+5. **The naive p99 is 2.2× its p50 (9.19 vs 4.11 ms at 16×16); the tiled p99 is within 2 %.**
+   The naive kernel runs first, after a single warm-up launch, so its slowest runs were
+   taken before the GPU reached its boost clock. A longer warm-up (~10 launches) is needed.
+
+6. **All kernels use less than 8 % of the T4 FP32 peak (8.1 TFLOPS): they are all memory-bound.**
+   Next steps: compare the static (compile-time TILE_WIDTH) and dynamic versions in the
+   same binary, then thread coarsening / register tiling, then cuBLAS as the reference.
+
+### instruction
+
+nvcc -arch=sm_75 matmul.cu -o matmul && ./matmul 1024 32 8
