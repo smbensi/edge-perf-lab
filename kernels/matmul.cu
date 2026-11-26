@@ -244,6 +244,9 @@ int main(int argc, char *argv[]){
                 printf(" FAILED: %d errors\n", nb_errors);
             }
 
+    } else {
+        fprintf(stderr, "blockSize.x must be greater than BlockSize.y");
+        exit(EXIT_FAILURE); 
     }
 
     CUDA_CHECK(cudaEventDestroy(start));

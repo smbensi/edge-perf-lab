@@ -18,3 +18,4 @@ PCIe ceiling = 15.75 GB/s (PCIe 3.0 x16 theoretical, T4).
 | naive  | 32×8             | 3.3845 | 7.1032 | 634.5 | 302.3 | 124   | 5.12× | 155   | 409 % | 7.8 % |
 | tiled  | 32×8 (TK=8)      | 4.3085 | 4.3831 | 498.4 | 489.9 | 819\* | 0.61× | 1024\* | 49 %  | 6.2 % |
 
+\* Not in the prediction table: TK = 8 gives an intensity of 2·8·256 / ((8·8 + 8·32)·4) = 3.2 FLOP/B, so a ceiling of 3.2 × 320 = 1024 GFLOPS and 80 % of it = 819 GFLOPS.
