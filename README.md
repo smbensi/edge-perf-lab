@@ -156,7 +156,7 @@ The model does not depend on N, so the same prediction holds for N = 1024 and N 
 
 All kernels are memory-bound (intensity < 25 FLOP/B).
 
-Without the 2nd `__syncthreads()` (5 runs): prediction = 5 wrong runs beause of the write-after-read
+Without the 2nd `__syncthreads()` (5 runs): prediction = 5 wrong runs because of the write-after-read
 
 
 ### Results
@@ -170,6 +170,36 @@ Without the 2nd `__syncthreads()` (5 runs): prediction = 5 wrong runs beause of 
 
 \* Not in the prediction table: TK = 8 gives an intensity of 2·8·256 / ((8·8 + 8·32)·4) = 3.2 FLOP/B, so a ceiling of 3.2 × 320 = 1024 GFLOPS and 80 % of it = 819 GFLOPS.
 
+### Conclusions
+
+1. **Tiling behaves as the roofline model predicts, in relative terms.**
+   Tiled 16×16 reaches 615 GFLOPS and tiled 32×8 (TK = 8) 498 GFLOPS: a ratio of 0.81,
+   matching the intensity ratio 3.2 / 4 = 0.80. Both kernels sit at ~48–49 % of their
+   roofline ceiling (1280 and 1024 GFLOPS), below the 80 % assumed in the prediction.
+
+2. **The naive kernel beats its own "ceiling" (183 % at 16×16, 409 % at 32×8).**
+   The model assumes every global load goes to DRAM. In practice the L1/L2 caches serve
+   most repeated loads of A and B, so actual DRAM traffic is lower and the effective
+   intensity higher than modelled. The naive ceiling is a pessimistic bound, not a limit.
+
+3. **Block shape matters for the naive kernel: 32×8 is 21 % faster than 16×16 (634 vs 523 GFLOPS).**
+   With 32×8 a warp reads one contiguous row of 32 floats (128 bytes, fully coalesced);
+   with 16×16 it reads two half-rows, i.e. two separate memory segments.
+   Same effect and same magnitude as rgb2gray (+20 %).
+
+4. **Tiled 32×8 is slower than naive 32×8 (498 vs 634 GFLOPS).**
+   With TK = 8 the kernel runs K / 8 = 128 phases, i.e. 256 `__syncthreads()`,
+   only 64 of 256 threads load A, and since TK is a runtime value the inner loop
+   cannot be unrolled. Tiling only pays off if these overheads stay small.
+
+5. **The naive p99 is 2.2× its p50 (9.19 vs 4.11 ms at 16×16); the tiled p99 is within 2 %.**
+   The naive kernel runs first, after a single warm-up launch, so its slowest runs were
+   taken before the GPU reached its boost clock. A longer warm-up (~10 launches) is needed.
+
+6. **All kernels use less than 8 % of the T4 FP32 peak (8.1 TFLOPS): they are all memory-bound.**
+   Next steps: compare the static (compile-time TILE_WIDTH) and dynamic versions in the
+   same binary, then thread coarsening / register tiling, then cuBLAS as the reference.
+
 ### instruction
 
-!nvcc -arch=sm_75 matmul.cu -o matmul && ./matmul 1024 32 8
+nvcc -arch=sm_75 matmul.cu -o matmul && ./matmul 1024 32 8

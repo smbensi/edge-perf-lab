@@ -63,7 +63,7 @@ __global__ void matmulTiledKernel(float const *A, float const *B, float *C, int 
     Cval = 0;
     for(int ph=0; ph<(K+TK-1)/TK; ++ph){
         if(tx<TK){
-            if (row < M && (ph*TK+tx)<K && tx<TK) Ads[ty*TK+tx] = A[row*K+ph*TK+tx]; else Ads[ty*TK+tx] = 0.0f;
+            if (row < M && (ph*TK+tx)<K) Ads[ty*TK+tx] = A[row*K+ph*TK+tx]; else Ads[ty*TK+tx] = 0.0f;
         }
         if (col < N && (ph*TK+ty)<K) Bds[ty*blockDim.x+tx] = B[(ph*TK+ty)*N+col]; else Bds[ty*blockDim.x+tx] = 0.0f;
         __syncthreads();
@@ -111,7 +111,7 @@ void print_results(float *p_50_99_ms,int N,const char *type){
     printf("p_50ms = %.4f , p_99ms = %.4f\n", p_50_99_ms[0], p_50_99_ms[1]);
     double bandwidth_p50 = (2*(long)N*N*N)/(p_50_99_ms[0]/1000)/1e9;
     double bandwidth_p99 = (2*(long)N*N*N)/(p_50_99_ms[1]/1000)/1e9;
-    printf(" bandwidth p_50ms = %.4f GB/s , bandwidth p_99ms = %.4f GB/s \n", bandwidth_p50, bandwidth_p99);
+    printf(" bandwidth p_50ms = %.4f GFLOPS , bandwidth p_99ms = %.4f GFLOPS \n", bandwidth_p50, bandwidth_p99);
 
 }
 
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]){
     printf("[TILED] M=%d, K=%d, N=%d block_size=(%d,%d)\n",M,K,N, blockSize.x, blockSize.y);
     //warmup
     int TK = min(blockSize.x,blockSize.y);
-    if (blockSize.x < blockSize.y){
+    if (blockSize.x >= blockSize.y){
         size_t size_Ads = blockSize.y*TK*sizeof(float);
         size_t size_Bds = TK*blockSize.x*sizeof(float);
         size_t shared_size = size_Ads + size_Bds;
