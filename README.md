@@ -159,6 +159,17 @@ All kernels are memory-bound (intensity < 25 FLOP/B).
 Without the 2nd `__syncthreads()` (5 runs): prediction = 5 wrong runs beause of the write-after-read
 
 
+### Results
+
+| Kernel | Block | p50 (ms) | p99 (ms) | GFLOPS @p50 | GFLOPS @p99 | Predicted (GFLOPS) | Measured / predicted | Roofline ceiling (GFLOPS) | % of ceiling | % of FP32 peak (8.1 TFLOPS) |
+|:-------|:-----:|---------:|---------:|------------:|------------:|-------------------:|---------------------:|--------------------------:|-------------:|----------------------------:|
+| naive  | 16×16            | 4.1096 | 9.1853 | 522.6 | 233.8 | 228   | 2.29× | 285   | 183 % | 6.5 % |
+| tiled  | 16×16            | 3.4916 | 3.5712 | 615.0 | 601.3 | 1024  | 0.60× | 1280  | 48 %  | 7.6 % |
+| naive  | 32×8             | 3.3845 | 7.1032 | 634.5 | 302.3 | 124   | 5.12× | 155   | 409 % | 7.8 % |
+| tiled  | 32×8 (TK=8)      | 4.3085 | 4.3831 | 498.4 | 489.9 | 819\* | 0.61× | 1024\* | 49 %  | 6.2 % |
+
+\* Not in the prediction table: TK = 8 gives an intensity of 2·8·256 / ((8·8 + 8·32)·4) = 3.2 FLOP/B, so a ceiling of 3.2 × 320 = 1024 GFLOPS and 80 % of it = 819 GFLOPS.
+
 ### instruction
 
 !nvcc -arch=sm_75 matmul.cu -o matmul && ./matmul 1024 32 8
